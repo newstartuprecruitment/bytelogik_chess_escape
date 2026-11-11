@@ -10,12 +10,16 @@ class GameState {
   final bool isWon;
   final bool isLost;
   final Map<Piece, Square> currentPieces;
+  final bool canUndo;
+  final bool canRedo;
 
   const GameState({
     this.deletedSquares = const {},
     this.isWon = false,
     this.isLost = false,
     this.currentPieces = const {},
+    this.canUndo = false,
+    this.canRedo = false,
   });
 
   Piece? pieceAt(Square square) {
@@ -48,12 +52,16 @@ class GameState {
     bool? isWon,
     bool? isLost,
     Map<Piece, Square>? currentPieces,
+    bool? canUndo,
+    bool? canRedo,
   }) {
     return GameState(
       deletedSquares: deletedSquares ?? this.deletedSquares,
       isWon: isWon ?? this.isWon,
       isLost: isLost ?? this.isLost,
       currentPieces: currentPieces ?? this.currentPieces,
+      canUndo: canUndo ?? this.canUndo,
+      canRedo: canRedo ?? this.canRedo,
     );
   }
 }

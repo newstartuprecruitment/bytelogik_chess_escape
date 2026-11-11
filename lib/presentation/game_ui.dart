@@ -13,7 +13,7 @@ class GameUi extends ConsumerWidget {
     final gameDataRepository = ref.watch(gameDataRepositoryProvider);
 
     ref.listen(chessEscapeGameProvider, (previous, next) {
-      if (previous != next && next.deletedSquares.isEmpty) {
+      if (previous != next && !next.canUndo && !next.canRedo) {
         final fen = gameDataRepository.fenFromPieces(next.currentPieces);
         ref.read(boardControllerInstanceProvider).loadFen(fen);
       }

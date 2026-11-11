@@ -26,4 +26,12 @@ class ChessEscapeGame extends _$ChessEscapeGame {
   void handleTurn(Turn turn) {
     state = runner.executeTurn(turn);
   }
+
+  void undo() {
+    state = runner.undo();
+  }
+
+  void redo() {
+    state = runner.redo();
+  }
 }
