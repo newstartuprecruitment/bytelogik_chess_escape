@@ -10,7 +10,7 @@ class GameData {
   static Future<void> load() async {
     try {
       _fens.clear();
-      final data = await rootBundle.loadString('data/input.csv');
+      final data = await rootBundle.loadString('assets/data/input.csv');
       final lines = data.split('\n');
       for (var line in lines) {
         line = line.trim();
