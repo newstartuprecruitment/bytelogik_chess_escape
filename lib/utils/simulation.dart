@@ -1,9 +1,11 @@
 import 'dart:math';
 
+import 'package:chess_escape/domain/config/constants.dart';
+import 'package:chess_escape/domain/services/game_logic.dart';
+import 'package:chessboard_ui/core/utils/debug_log.dart';
+import 'package:chessboard_ui/domain/entities/piece.dart';
+import 'package:chessboard_ui/domain/entities/square.dart';
 import 'package:collection/collection.dart';
-import 'package:logic/game_logic.dart';
-import 'package:logic/piece.dart';
-import 'package:logic/square.dart';
 
 class SearchNode implements Comparable<SearchNode> {
   final int h;
@@ -67,18 +69,18 @@ class SimulationData {
   }
 
   void printResults() {
-    print("infeasible_count: $infeasibleCount");
-    print("feasible_count: $feasibleCount");
+    log("infeasible_count: $infeasibleCount");
+    log("feasible_count: $feasibleCount");
     for (int stepValue = 5; stepValue <= 15; stepValue++) {
-      print("$stepValue: ${stepsCount[stepValue]}");
+      log("$stepValue: ${stepsCount[stepValue]}");
     }
-    print("15+: $steps15PlusCount");
+    log("15+: $steps15PlusCount");
   }
 
   void printCsv() {
-    print("number_of_steps;initial_board;solution");
+    log("number_of_steps;initial_board;solution");
     for (final row in csvRows) {
-      print(row);
+      log(row);
     }
   }
 }
@@ -126,6 +128,7 @@ class ChessSimulation {
   final Random random = Random();
   late final ZobristHasher hasher;
   final SimulationData data = SimulationData();
+  final GameLogic logic = GameLogic();
 
   ChessSimulation(this.iterations) {
     hasher = ZobristHasher(random);
@@ -143,7 +146,7 @@ class ChessSimulation {
         var selectedCoords = (List.of(
           innerSquares,
         )..shuffle(random)).sublist(0, 6);
-        if (BoardRules.hasAdjacentPair(selectedCoords)) {
+        if (logic.hasAdjacentPair(selectedCoords)) {
           var shuffledPieces = List.of(Constants.pieces)..shuffle(random);
           initialPieces = {
             for (int j = 0; j < shuffledPieces.length; j++)
@@ -176,7 +179,7 @@ class ChessSimulation {
 
     queue.add(
       SearchNode(
-        BoardRules.getHeuristic(initialPieces, initialDeleted),
+        logic.getHeuristic(initialPieces, initialDeleted),
         stateId,
         initialPieces,
         initialDeleted,
@@ -203,7 +206,7 @@ class ChessSimulation {
         Piece piece = entry.key;
         Square startCoord = entry.value;
 
-        if (!BoardRules.isAdjacentToAnotherPiece(
+        if (!logic.isAdjacentToAnotherPiece(
           startCoord,
           piece,
           current.pieces,
@@ -211,7 +214,7 @@ class ChessSimulation {
           continue;
         }
 
-        var reachableSquares = BoardRules.getReachableSquares(
+        var reachableSquares = logic.getReachableSquares(
           piece,
           startCoord,
           current.pieces,
@@ -257,7 +260,7 @@ class ChessSimulation {
 
             queue.add(
               SearchNode(
-                BoardRules.getHeuristic(nextPieces, nextIsDeleted),
+                logic.getHeuristic(nextPieces, nextIsDeleted),
                 stateId,
                 nextPieces,
                 nextIsDeleted,

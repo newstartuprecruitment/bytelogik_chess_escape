@@ -1,28 +1,10 @@
 import 'dart:math';
 
-import 'piece.dart';
-import 'square.dart';
+import 'package:chessboard_ui/domain/entities/piece.dart';
+import 'package:chessboard_ui/domain/entities/square.dart';
 
-class Constants {
-  static const List<Piece> pieces = [
-    Piece.whitePawn,
-    Piece.whiteKnight,
-    Piece.whiteBishop,
-    Piece.whiteRook,
-    Piece.whiteQueen,
-    Piece.whiteKing,
-  ];
-
-  static List<Square> get innerSquares => [
-    for (int r = 1; r < 7; r++)
-      for (int f = 1; f < 7; f++) Square.fromRankFile(r, f),
-  ];
-
-  static String toSquare(Square s) => s.name;
-}
-
-class BoardRules {
-  static bool hasAdjacentPair(List<Square> coords) {
+class GameLogic {
+  bool hasAdjacentPair(List<Square> coords) {
     for (int i = 0; i < coords.length; i++) {
       for (int j = i + 1; j < coords.length; j++) {
         if ((coords[i].rank - coords[j].rank).abs() <= 1 &&
@@ -34,7 +16,7 @@ class BoardRules {
     return false;
   }
 
-  static bool isAdjacentToAnotherPiece(
+  bool isAdjacentToAnotherPiece(
     Square square,
     Piece movingPiece,
     Map<Piece, Square> currentPieces,
@@ -59,7 +41,7 @@ class BoardRules {
     return false;
   }
 
-  static int getHeuristic(Map<Piece, Square> pieces, Set<Square> isDeleted) {
+  int getHeuristic(Map<Piece, Square> pieces, Set<Square> isDeleted) {
     int h = (pieces.length - 1) * 10;
     Set<Square> occupied = pieces.values.toSet();
 
@@ -117,7 +99,7 @@ class BoardRules {
     return h;
   }
 
-  static List<Square> getReachableSquares(
+  List<Square> getReachableSquares(
     Piece piece,
     Square start,
     Map<Piece, Square> pieces,
