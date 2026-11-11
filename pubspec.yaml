@@ -3,6 +3,7 @@ version: 0.0.1
 publish_to: none
 environment:
   sdk: ^3.12.2
+  flutter: 3.47.9
 description: A chess game
 dependencies:
   chessboard_ui:

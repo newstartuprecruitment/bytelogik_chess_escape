@@ -1,0 +1,58 @@
+name: dev-release
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        default: 'dev'
+        type: choice
+        options:
+          - dev
+      commit_sha:
+        description: 'Commit to deploy'
+        required: true
+        default: 'HEAD'
+        type: string
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+jobs:
+  deploy-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.inputs.commit_sha || github.ref }}
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - name: Set up SSH
+        uses: webfactory/ssh-agent@v0.10.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version-file: pubspec.yaml
+          cache: true   
+      - name: Install dependencies
+        run: flutter pub get
+      - name: Verify formatting
+        run: dart format --output=none --set-exit-if-changed .
+      - name: Run Build Runner
+        run: dart run build_runner build --delete-conflicting-outputs --workspace
+      - name: Analyze project source
+        run: dart analyze  
+      - name: Build web
+        run: flutter build web --no-pub
+      - name: Install wrangler
+        run: npm install -g wrangler@latest
+      - name: Deploy
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: build/web
+          command: deploy --name dev-chess-escape
+
