@@ -22,6 +22,7 @@ class GameRunner {
 
   GameState _syncFlags(GameState state) {
     return state.copyWith(
+      currentLevel: currentLevel,
       canUndo: _undoStack.isNotEmpty,
       canRedo: _redoStack.isNotEmpty,
     );
@@ -32,7 +33,9 @@ class GameRunner {
     _redoStack.clear();
     final fen = gameData.getFen(currentLevel);
     final pieces = engine.parseFenToPieces(fen);
-    _currentState = _syncFlags(GameState(currentPieces: pieces));
+    _currentState = _syncFlags(
+      GameState(currentLevel: currentLevel, currentPieces: pieces),
+    );
     return _currentState!;
   }
 
@@ -78,6 +81,20 @@ class GameRunner {
   GameState reset([int? level]) {
     if (level != null) {
       currentLevel = level;
+    }
+    return initialize();
+  }
+
+  GameState nextLevel() {
+    if (GameData.totalLevels == 0 || currentLevel < GameData.totalLevels) {
+      currentLevel++;
+    }
+    return initialize();
+  }
+
+  GameState previousLevel() {
+    if (currentLevel > 1) {
+      currentLevel--;
     }
     return initialize();
   }

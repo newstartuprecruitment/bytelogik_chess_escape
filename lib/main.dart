@@ -1,3 +1,4 @@
+import 'package:chess_escape/application/state/chess_escape_provider.dart';
 import 'package:chess_escape/application/state/game_data_provider.dart';
 import 'package:chess_escape/application/state/progress_provider.dart';
 import 'package:chess_escape/data/repositories/local_game_data_repository.dart';
@@ -12,12 +13,21 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final gameDataRepository = LocalGameDataRepository();
   await gameDataRepository.loadLevels();
+
+  final progressRepository = LocalProgressRepository();
+  final initialLevel = await progressRepository.getHighestUnlockedLevel();
+
   runApp(
     ProviderScope(
       overrides: [
-        progressRepositoryProvider.overrideWithValue(LocalProgressRepository()),
+        progressRepositoryProvider.overrideWithValue(progressRepository),
         gameDataRepositoryProvider.overrideWithValue(gameDataRepository),
-        initialFenProvider.overrideWithValue(gameDataRepository.getFen(1)),
+        initialFenProvider.overrideWithValue(
+          gameDataRepository.getFen(initialLevel),
+        ),
+        chessEscapeGameProvider.overrideWith(
+          () => ChessEscapeGame()..runner.currentLevel = initialLevel,
+        ),
       ],
       child: const ChessEscapeApp(),
     ),

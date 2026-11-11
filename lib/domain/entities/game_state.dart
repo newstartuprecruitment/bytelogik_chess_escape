@@ -6,6 +6,7 @@ import 'package:chessboard_ui/domain/entities/turn.dart';
 class GameState {
   static final GameLogic _logic = GameLogic();
 
+  final int currentLevel;
   final Set<Square> deletedSquares;
   final bool isWon;
   final bool isLost;
@@ -14,6 +15,7 @@ class GameState {
   final bool canRedo;
 
   const GameState({
+    this.currentLevel = 1,
     this.deletedSquares = const {},
     this.isWon = false,
     this.isLost = false,
@@ -48,6 +50,7 @@ class GameState {
   }
 
   GameState copyWith({
+    int? currentLevel,
     Set<Square>? deletedSquares,
     bool? isWon,
     bool? isLost,
@@ -56,6 +59,7 @@ class GameState {
     bool? canRedo,
   }) {
     return GameState(
+      currentLevel: currentLevel ?? this.currentLevel,
       deletedSquares: deletedSquares ?? this.deletedSquares,
       isWon: isWon ?? this.isWon,
       isLost: isLost ?? this.isLost,

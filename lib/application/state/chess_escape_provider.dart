@@ -1,5 +1,6 @@
 import 'package:chess_escape/application/controller/game_runner.dart';
 import 'package:chess_escape/application/services/game_data.dart';
+import 'package:chess_escape/application/state/progress_provider.dart';
 import 'package:chess_escape/domain/entities/game_state.dart';
 import 'package:chess_escape/domain/services/game_engine.dart';
 import 'package:chessboard_ui/chessboard_ui.dart';
@@ -23,8 +24,25 @@ class ChessEscapeGame extends _$ChessEscapeGame {
     state = runner.reset();
   }
 
+  void loadLevel(int level) {
+    state = runner.reset(level);
+  }
+
+  void nextLevel() {
+    state = runner.nextLevel();
+  }
+
+  void previousLevel() {
+    state = runner.previousLevel();
+  }
+
   void handleTurn(Turn turn) {
     state = runner.executeTurn(turn);
+    if (state.isWon) {
+      ref
+          .read(highestUnlockedLevelProvider.notifier)
+          .updateLevel(state.currentLevel + 1);
+    }
   }
 
   void undo() {

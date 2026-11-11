@@ -1,6 +1,7 @@
 import 'package:chess_escape/application/delegates/game_delegate.dart';
 import 'package:chess_escape/application/state/chess_escape_provider.dart';
 import 'package:chess_escape/application/state/game_data_provider.dart';
+import 'package:chess_escape/domain/entities/game_state.dart';
 import 'package:chessboard_ui/chessboard_ui.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -36,6 +37,13 @@ class GameBoard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final gameState = ref.watch(chessEscapeGameProvider);
     final boardController = ref.watch(boardControllerInstanceProvider);
+
+    ref.listen<GameState>(chessEscapeGameProvider, (previous, next) {
+      if (previous?.currentLevel != next.currentLevel) {
+        final gameDataRepository = ref.read(gameDataRepositoryProvider);
+        boardController.loadFen(gameDataRepository.getFen(next.currentLevel));
+      }
+    });
 
     return ConstrainedBox(
       constraints: const BoxConstraints(maxWidth: 600, maxHeight: 600),
