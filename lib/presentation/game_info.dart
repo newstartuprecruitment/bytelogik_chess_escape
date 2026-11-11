@@ -1,5 +1,6 @@
 import 'package:chess_escape/application/state/chess_escape_provider.dart';
 import 'package:chess_escape/presentation/game_board.dart';
+import 'package:chessboard_ui/chessboard_ui.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -13,6 +14,7 @@ class GameInfo extends ConsumerWidget {
     final gameState = ref.watch(chessEscapeGameProvider);
     final gameNotifier = ref.read(chessEscapeGameProvider.notifier);
     final boardController = ref.read(boardControllerInstanceProvider);
+    final initialFen = ref.read(initialFenProvider);
 
     return Scaffold(
       appBar: AppBar(
@@ -38,7 +40,10 @@ class GameInfo extends ConsumerWidget {
           ),
           IconButton(
             icon: const Icon(Icons.refresh),
-            onPressed: gameNotifier.reset,
+            onPressed: () {
+              gameNotifier.reset();
+              boardController.loadFen(initialFen);
+            },
           ),
         ],
       ),
