@@ -45,20 +45,22 @@ class GameBoard extends ConsumerWidget {
       }
     });
 
-    return ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: 600, maxHeight: 600),
-      child: UniversalChessboard(
-        controller: boardController,
-        behaviour: _behaviour,
-        mode: GameMode(GameDelegate(gameState)),
-        onMove: (turn) => _onMove(ref, turn),
-        style: BoardStyle(
-          theme: _theme,
-          builders: ChessboardBuilders(
-            squareBuilder: (_, square) =>
-                gameState.deletedSquares.contains(square)
-                ? const Icon(Icons.lock)
-                : const SizedBox.shrink(),
+    return Flexible(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 600, maxHeight: 600),
+        child: UniversalChessboard(
+          controller: boardController,
+          behaviour: _behaviour,
+          mode: GameMode(GameDelegate(gameState)),
+          onMove: (turn) => _onMove(ref, turn),
+          style: BoardStyle(
+            theme: _theme,
+            builders: ChessboardBuilders(
+              squareBuilder: (_, square) =>
+                  gameState.deletedSquares.contains(square)
+                  ? const Icon(Icons.lock)
+                  : const SizedBox.shrink(),
+            ),
           ),
         ),
       ),
