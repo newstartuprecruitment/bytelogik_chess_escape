@@ -1,0 +1,7 @@
+[requires]
+abseil/20260107.1
+[generators]
+CMakeDeps
+CMakeToolchain
+[layout]
+cmake_layout

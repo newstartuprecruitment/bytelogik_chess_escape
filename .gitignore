@@ -33,4 +33,5 @@ doc/api/
 
 .flutter-plugins
 .flutter-plugins-dependencies
+CMakeUserPresets.json
 solutions.csv

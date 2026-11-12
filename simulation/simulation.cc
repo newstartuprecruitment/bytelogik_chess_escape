@@ -1,19 +1,20 @@
+#include "absl/container/flat_hash_set.h"
 #include "board.h"
 #include <algorithm>
+#include <array>
 #include <bit>
 #include <fstream>
 #include <iostream>
 #include <queue>
 #include <random>
 #include <string>
-#include <unordered_set>
 #include <vector>
 
 using namespace std;
 
 constexpr Bitboard edges = Rank1 | Rank8 | FileA | FileH;
 constexpr int MAX_STEPS = 25;
-constexpr int MAX_ITERATIONS = 1ULL << 24;
+constexpr int MAX_ITERATIONS = 1ULL << 25;
 
 struct BoardState {
   uint64_t deleted_squares;
@@ -155,10 +156,15 @@ uint8_t getHeuristic(const BoardState &state) {
   return exit_steps + std::max(extra_inner_steps, adj_h);
 }
 
-bool solveAStar(const BoardState &initial_state, BoardState &goal_state,
-                unordered_set<uint64_t, IdentityHash> &visited) {
-  priority_queue<BoardState, vector<BoardState>, greater<BoardState>> pq;
+struct ReusablePq : public priority_queue<BoardState, vector<BoardState>,
+                                          greater<BoardState>> {
+  void clear() { c.clear(); }
+  void reserve(size_t n) { c.reserve(n); }
+};
 
+bool solveAStar(const BoardState &initial_state, BoardState &goal_state,
+                absl::flat_hash_set<uint64_t, IdentityHash> &visited,
+                ReusablePq &pq) {
   BoardState start = initial_state;
   start.step_value = 0;
   start.heuristic = getHeuristic(start);
@@ -290,7 +296,7 @@ void createBoard(mt19937 &rng, BoardState &initial_board_state,
 }
 
 int main() {
-  int num_simulations = 10;
+  int num_simulations = 500;
   int infeasible_count = 0;
   int feasible_count = 0;
   vector<int> steps_count(16, 0);
@@ -301,8 +307,11 @@ int main() {
   ofstream csv_file("solutions.csv");
   csv_file << "number_of_steps;initial_board;solution\n";
 
-  unordered_set<uint64_t, IdentityHash> visited;
+  absl::flat_hash_set<uint64_t, IdentityHash> visited;
   visited.reserve(MAX_ITERATIONS);
+
+  ReusablePq pq;
+  pq.reserve(MAX_ITERATIONS);
 
   for (int sim = 0; sim < num_simulations; ++sim) {
     BoardState initial_board_state;
@@ -312,7 +321,9 @@ int main() {
 
     BoardState goal_state;
     visited.clear();
-    if (solveAStar(initial_board_state, goal_state, visited)) {
+    pq.clear();
+
+    if (solveAStar(initial_board_state, goal_state, visited, pq)) {
       feasible_count++;
       int number_of_steps = goal_state.step_value;
       if (number_of_steps >= 5 && number_of_steps <= 15) {
@@ -329,12 +340,12 @@ int main() {
 
   csv_file.close();
 
-  cout << "infeasible_count " << infeasible_count << "\n";
-  cout << "feasible_count " << feasible_count << "\n";
+  std::cout << "infeasible_count " << infeasible_count << "\n";
+  std::cout << "feasible_count " << feasible_count << "\n";
   for (int step_value = 5; step_value <= 15; ++step_value) {
-    cout << step_value << " " << steps_count[step_value] << "\n";
+    std::cout << step_value << " " << steps_count[step_value] << "\n";
   }
-  cout << "15+ " << steps_15_plus_count << "\n";
+  std::cout << "15+ " << steps_15_plus_count << "\n";
 
   return 0;
 }

@@ -8,6 +8,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 set(CMAKE_INTERPROCEDURAL_OPTIMIZATION TRUE)
 
+find_package(absl REQUIRED)
+
 add_executable(simulation simulation.cc)
 
 target_compile_options(simulation PUBLIC
@@ -34,5 +36,7 @@ target_compile_options(simulation PUBLIC
     -flto=auto
     -fno-semantic-interposition
 )
+
+target_link_libraries(simulation PUBLIC absl::flat_hash_set)
 
 target_link_options(simulation PUBLIC -no-pie)
