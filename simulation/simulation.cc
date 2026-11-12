@@ -35,15 +35,14 @@ struct IdentityHash {
 uint64_t hashState(const BoardState &state) {
   uint64_t p = 0;
   for (int i = 0; i < 6; ++i) {
-    p |= (static_cast<uint64_t>(state.pieces[i]) << (i * 7));
+    p |= (static_cast<uint64_t>(state.pieces[i]) & 0x7F) << (i * 7);
   }
-  uint64_t h = state.deleted_squares ^ (p * 0x9e3779b185e6ULL);
-  h ^= h >> 33;
-  h *= 0xff51afd7ed558ccdULL;
-  h ^= h >> 33;
-  h *= 0xc4ceb9fe1a85ec53ULL;
-  h ^= h >> 33;
-  return h;
+
+  p = (p ^ (p >> 30)) * 0xbf58476d1ce4e5b9ULL;
+
+  uint64_t h = state.deleted_squares ^ p;
+  h = (h ^ (h >> 27)) * 0x94d049bb133111ebULL;
+  return h ^ (h >> 31);
 }
 
 Bitboard getValidTargets(const BoardState &state, int piece_idx, Bitboard occ) {
@@ -96,47 +95,87 @@ string buildSolution(const BoardState &state) {
 }
 
 uint8_t getHeuristic(const BoardState &state) {
-  uint8_t h = 0;
+  uint8_t exit_steps = 0;
+  uint8_t extra_inner_steps = 0;
+  Bitboard occ = 0;
+
+  for (int i = 0; i < 6; ++i) {
+    if (state.pieces[i] != Square::NoSquare) {
+      occ |= squareIntToBitboard(static_cast<int>(state.pieces[i]));
+    }
+  }
+
   for (int i = 0; i < 5; ++i) {
     if (state.pieces[i] == Square::NoSquare) {
       continue;
     }
+    exit_steps += 1;
+
     int sq = static_cast<int>(state.pieces[i]);
     int r = sq / 8;
     int f = sq % 8;
 
     if (i == idx(Piece::Pawn)) {
-      h += std::min({r, 7 - r, f, 7 - f});
+      extra_inner_steps += std::min(r, 7 - r) - 1;
     } else if (i == idx(Piece::Knight)) {
       if ((r == 3 || r == 4) && (f == 3 || f == 4)) {
-        h += 2;
-      } else {
-        h += 1;
+        extra_inner_steps += 1;
       }
-    } else {
-      h += 1;
     }
   }
-  return h;
+
+  if (exit_steps == 0) {
+    return 0;
+  }
+
+  Bitboard piecesWithoutAdjacentPieces = 0;
+  for (int i = 0; i < 5; ++i) {
+    if (state.pieces[i] != Square::NoSquare) {
+      int sq = static_cast<int>(state.pieces[i]);
+      Bitboard self = squareIntToBitboard(sq);
+      if ((kingToLocations[sq] & (occ & ~self)) == 0) {
+        piecesWithoutAdjacentPieces |= self;
+      }
+    }
+  }
+
+  uint8_t adj_h = 0;
+  Bitboard removed_squares = 0;
+
+  while (piecesWithoutAdjacentPieces) {
+    int sq = std::countr_zero(piecesWithoutAdjacentPieces);
+    piecesWithoutAdjacentPieces &= piecesWithoutAdjacentPieces - 1;
+
+    if ((kingToLocations[sq] & removed_squares) == 0) {
+      adj_h += 1;
+      removed_squares |= kingToLocations[sq];
+    }
+  }
+
+  return exit_steps + std::max(extra_inner_steps, adj_h);
 }
 
-bool solveAStar(const BoardState &initial_state, BoardState &goal_state) {
+bool solveAStar(const BoardState &initial_state, BoardState &goal_state,
+                unordered_set<uint64_t, IdentityHash> &visited) {
   priority_queue<BoardState, vector<BoardState>, greater<BoardState>> pq;
-  unordered_set<uint64_t, IdentityHash> visited;
-  visited.reserve(131072);
 
   BoardState start = initial_state;
   start.step_value = 0;
   start.heuristic = getHeuristic(start);
 
   pq.push(start);
-  visited.insert(hashState(start));
 
   int iterations = 0;
 
   while (!pq.empty() && iterations < MAX_ITERATIONS) {
     BoardState current = pq.top();
     pq.pop();
+
+    uint64_t current_hash = hashState(current);
+    if (!visited.insert(current_hash).second) {
+      continue;
+    }
+
     iterations++;
 
     if (current.heuristic == 0) {
@@ -200,7 +239,7 @@ bool solveAStar(const BoardState &initial_state, BoardState &goal_state) {
 
         if (next_state.step_value + next_state.heuristic <= MAX_STEPS) {
           uint64_t h = hashState(next_state);
-          if (visited.insert(h).second) {
+          if (visited.find(h) == visited.end()) {
             pq.push(next_state);
           }
         }
@@ -208,6 +247,46 @@ bool solveAStar(const BoardState &initial_state, BoardState &goal_state) {
     }
   }
   return false;
+}
+
+static constexpr auto inner_squares = []() {
+  std::array<int, 36> x;
+  int i = 0;
+  for (int r = 1; r <= 6; ++r) {
+    for (int f = 1; f <= 6; ++f) {
+      x[i++] = r * 8 + f;
+    }
+  }
+  return x;
+}();
+
+void createBoard(mt19937 &rng, BoardState &initial_board_state,
+                 string &initial_board) {
+  auto squares = inner_squares;
+  bool has_any_adjacent = false;
+
+  while (!has_any_adjacent) {
+    shuffle(squares.begin(), squares.end(), rng);
+    initial_board_state.deleted_squares = 0;
+    initial_board = "";
+
+    Bitboard occ = 0;
+    for (int i = 0; i < 6; ++i) {
+      initial_board_state.pieces[i] = static_cast<Square>(squares[i]);
+      initial_board += posToString(squares[i]);
+      if (i < 5)
+        initial_board += "-";
+      occ |= squareIntToBitboard(squares[i]);
+    }
+
+    for (int i = 0; i < 6; ++i) {
+      if ((kingToLocations[squares[i]] &
+           (occ & ~squareIntToBitboard(squares[i]))) != 0) {
+        has_any_adjacent = true;
+        break;
+      }
+    }
+  }
 }
 
 int main() {
@@ -219,47 +298,21 @@ int main() {
 
   mt19937 rng(1);
 
-  vector<int> inner_squares;
-  inner_squares.reserve(36);
-  for (int r = 1; r <= 6; ++r) {
-    for (int f = 1; f <= 6; ++f) {
-      inner_squares.push_back(r * 8 + f);
-    }
-  }
-
   ofstream csv_file("solutions.csv");
   csv_file << "number_of_steps;initial_board;solution\n";
+
+  unordered_set<uint64_t, IdentityHash> visited;
+  visited.reserve(MAX_ITERATIONS);
 
   for (int sim = 0; sim < num_simulations; ++sim) {
     BoardState initial_board_state;
     string initial_board;
-    bool has_any_adjacent = false;
 
-    while (!has_any_adjacent) {
-      shuffle(inner_squares.begin(), inner_squares.end(), rng);
-      initial_board_state.deleted_squares = 0;
-      initial_board = "";
-
-      Bitboard occ = 0;
-      for (int i = 0; i < 6; ++i) {
-        initial_board_state.pieces[i] = static_cast<Square>(inner_squares[i]);
-        initial_board += posToString(inner_squares[i]);
-        if (i < 5)
-          initial_board += "-";
-        occ |= squareIntToBitboard(inner_squares[i]);
-      }
-
-      for (int i = 0; i < 6; ++i) {
-        if ((kingToLocations[inner_squares[i]] &
-             (occ & ~squareIntToBitboard(inner_squares[i]))) != 0) {
-          has_any_adjacent = true;
-          break;
-        }
-      }
-    }
+    createBoard(rng, initial_board_state, initial_board);
 
     BoardState goal_state;
-    if (solveAStar(initial_board_state, goal_state)) {
+    visited.clear();
+    if (solveAStar(initial_board_state, goal_state, visited)) {
       feasible_count++;
       int number_of_steps = goal_state.step_value;
       if (number_of_steps >= 5 && number_of_steps <= 15) {
