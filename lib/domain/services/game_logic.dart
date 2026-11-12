@@ -1,5 +1,3 @@
-import 'dart:math';
-
 import 'package:chessboard_ui/domain/entities/piece.dart';
 import 'package:chessboard_ui/domain/entities/square.dart';
 
@@ -39,64 +37,6 @@ class GameLogic {
       }
     }
     return false;
-  }
-
-  int getHeuristic(Map<Piece, Square> pieces, Set<Square> isDeleted) {
-    int h = (pieces.length - 1) * 10;
-    Set<Square> occupied = pieces.values.toSet();
-
-    pieces.forEach((piece, coord) {
-      if (piece.role == PieceRole.king) return;
-
-      int rank = coord.rank;
-      int file = coord.file;
-      int distToEdge = [rank, 7 - rank, file, 7 - file].reduce(min);
-
-      if (piece.role == PieceRole.pawn) {
-        h += distToEdge;
-      } else if (piece.role == PieceRole.knight) {
-        h += (distToEdge + 1) ~/ 2;
-      } else if (piece.role == PieceRole.queen ||
-          piece.role == PieceRole.rook ||
-          piece.role == PieceRole.bishop) {
-        List<(int, int)> directions = [];
-        if (piece.role == PieceRole.queen || piece.role == PieceRole.rook) {
-          directions.addAll(const [(-1, 0), (1, 0), (0, -1), (0, 1)]);
-        }
-        if (piece.role == PieceRole.queen || piece.role == PieceRole.bishop) {
-          directions.addAll(const [(-1, -1), (-1, 1), (1, -1), (1, 1)]);
-        }
-
-        bool hasValidPath = false;
-        for (final d in directions) {
-          int currentRank = rank + d.$1;
-          int currentFile = file + d.$2;
-          while (currentRank >= 0 &&
-              currentRank < 8 &&
-              currentFile >= 0 &&
-              currentFile < 8) {
-            final currentSquare = Square.fromRankFile(currentRank, currentFile);
-            if (occupied.contains(currentSquare) ||
-                isDeleted.contains(currentSquare)) {
-              break;
-            }
-            if (currentRank == 0 ||
-                currentRank == 7 ||
-                currentFile == 0 ||
-                currentFile == 7) {
-              hasValidPath = true;
-              break;
-            }
-            currentRank += d.$1;
-            currentFile += d.$2;
-          }
-          if (hasValidPath) break;
-        }
-        h += hasValidPath ? 1 : 2;
-      }
-    });
-
-    return h;
   }
 
   List<Square> getReachableSquares(

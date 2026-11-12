@@ -32,6 +32,7 @@ class GameNavigation extends ConsumerWidget {
               ? () => gameNotifier.previousLevel()
               : null,
         ),
+        Text('${gameState.currentLevel}'),
         IconButton(
           icon: const Icon(Icons.chevron_right),
           tooltip: 'Next Level',

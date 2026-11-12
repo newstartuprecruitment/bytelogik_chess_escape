@@ -1,4 +1,3 @@
-import 'package:chess_escape/application/state/chess_escape_provider.dart';
 import 'package:chess_escape/presentation/game_controls.dart';
 import 'package:chess_escape/presentation/game_navigation.dart';
 import 'package:chess_escape/presentation/game_status.dart';
@@ -12,13 +11,11 @@ class GameInfo extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final gameState = ref.watch(chessEscapeGameProvider);
-
     return Scaffold(
       appBar: AppBar(
         leadingWidth: 100,
         leading: const GameNavigation(),
-        title: Text('Chess Escape - Level ${gameState.currentLevel}'),
+        title: Text('Chess Escape'),
         actions: const [GameControls()],
       ),
       body: Center(

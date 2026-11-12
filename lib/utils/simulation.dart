@@ -1,11 +1,25 @@
 import 'dart:math';
 
-import 'package:chess_escape/domain/config/constants.dart';
 import 'package:chess_escape/domain/services/game_logic.dart';
-import 'package:chessboard_ui/core/utils/debug_log.dart';
 import 'package:chessboard_ui/domain/entities/piece.dart';
 import 'package:chessboard_ui/domain/entities/square.dart';
 import 'package:collection/collection.dart';
+
+const List<Piece> pieces = [
+  Piece.whitePawn,
+  Piece.whiteKnight,
+  Piece.whiteBishop,
+  Piece.whiteRook,
+  Piece.whiteQueen,
+  Piece.whiteKing,
+];
+
+List<Square> get innerSquares => [
+  for (int r = 1; r < 7; r++)
+    for (int f = 1; f < 7; f++) Square.fromRankFile(r, f),
+];
+
+String toSquare(Square s) => s.name;
 
 class SearchNode implements Comparable<SearchNode> {
   final int h;
@@ -60,7 +74,7 @@ class SimulationData {
       Piece.whiteRook,
       Piece.whiteQueen,
       Piece.whiteKing,
-    ].map((piece) => Constants.toSquare(initialBoard[piece]!)).join("-");
+    ].map((piece) => toSquare(initialBoard[piece]!)).join("-");
     csvRows.add("$steps;$initialBoardStr;$solution");
   }
 
@@ -69,18 +83,18 @@ class SimulationData {
   }
 
   void printResults() {
-    log("infeasible_count: $infeasibleCount");
-    log("feasible_count: $feasibleCount");
+    print("infeasible_count: $infeasibleCount");
+    print("feasible_count: $feasibleCount");
     for (int stepValue = 5; stepValue <= 15; stepValue++) {
-      log("$stepValue: ${stepsCount[stepValue]}");
+      print("$stepValue: ${stepsCount[stepValue]}");
     }
-    log("15+: $steps15PlusCount");
+    print("15+: $steps15PlusCount");
   }
 
   void printCsv() {
-    log("number_of_steps;initial_board;solution");
+    print("number_of_steps;initial_board;solution");
     for (final row in csvRows) {
-      log(row);
+      print(row);
     }
   }
 }
@@ -99,7 +113,7 @@ class ZobristHasher {
   }
 
   void _initHashes() {
-    for (final piece in Constants.pieces) {
+    for (final piece in pieces) {
       _piecesHash[piece] = {};
       for (int i = 0; i < 64; i++) {
         _piecesHash[piece]![Square(i)] = _random64();
@@ -136,8 +150,6 @@ class ChessSimulation {
 
   void run() {
     Set<int> usedInputs = {};
-    final innerSquares = Constants.innerSquares;
-
     for (int i = 0; i < iterations; i++) {
       Map<Piece, Square> initialPieces = {};
       Set<Square> isDeleted = {};
@@ -147,7 +159,7 @@ class ChessSimulation {
           innerSquares,
         )..shuffle(random)).sublist(0, 6);
         if (logic.hasAdjacentPair(selectedCoords)) {
-          var shuffledPieces = List.of(Constants.pieces)..shuffle(random);
+          var shuffledPieces = List.of(pieces)..shuffle(random);
           initialPieces = {
             for (int j = 0; j < shuffledPieces.length; j++)
               shuffledPieces[j]: selectedCoords[j],
@@ -169,6 +181,64 @@ class ChessSimulation {
     data.printResults();
   }
 
+  int getHeuristic(Map<Piece, Square> pieces, Set<Square> isDeleted) {
+    int h = (pieces.length - 1) * 10;
+    Set<Square> occupied = pieces.values.toSet();
+
+    pieces.forEach((piece, coord) {
+      if (piece.role == PieceRole.king) return;
+
+      int rank = coord.rank;
+      int file = coord.file;
+      int distToEdge = [rank, 7 - rank, file, 7 - file].reduce(min);
+
+      if (piece.role == PieceRole.pawn) {
+        h += distToEdge;
+      } else if (piece.role == PieceRole.knight) {
+        h += (distToEdge + 1) ~/ 2;
+      } else if (piece.role == PieceRole.queen ||
+          piece.role == PieceRole.rook ||
+          piece.role == PieceRole.bishop) {
+        List<(int, int)> directions = [];
+        if (piece.role == PieceRole.queen || piece.role == PieceRole.rook) {
+          directions.addAll(const [(-1, 0), (1, 0), (0, -1), (0, 1)]);
+        }
+        if (piece.role == PieceRole.queen || piece.role == PieceRole.bishop) {
+          directions.addAll(const [(-1, -1), (-1, 1), (1, -1), (1, 1)]);
+        }
+
+        bool hasValidPath = false;
+        for (final d in directions) {
+          int currentRank = rank + d.$1;
+          int currentFile = file + d.$2;
+          while (currentRank >= 0 &&
+              currentRank < 8 &&
+              currentFile >= 0 &&
+              currentFile < 8) {
+            final currentSquare = Square.fromRankFile(currentRank, currentFile);
+            if (occupied.contains(currentSquare) ||
+                isDeleted.contains(currentSquare)) {
+              break;
+            }
+            if (currentRank == 0 ||
+                currentRank == 7 ||
+                currentFile == 0 ||
+                currentFile == 7) {
+              hasValidPath = true;
+              break;
+            }
+            currentRank += d.$1;
+            currentFile += d.$2;
+          }
+          if (hasValidPath) break;
+        }
+        h += hasValidPath ? 1 : 2;
+      }
+    });
+
+    return h;
+  }
+
   void _solveState(
     Map<Piece, Square> initialPieces,
     Set<Square> initialDeleted,
@@ -179,7 +249,7 @@ class ChessSimulation {
 
     queue.add(
       SearchNode(
-        logic.getHeuristic(initialPieces, initialDeleted),
+        getHeuristic(initialPieces, initialDeleted),
         stateId,
         initialPieces,
         initialDeleted,
@@ -252,15 +322,15 @@ class ChessSimulation {
             stateId++;
 
             String moveStr =
-                "${Constants.toSquare(startCoord)}"
-                "${Constants.toSquare(target)}";
+                "${toSquare(startCoord)}"
+                "${toSquare(target)}";
             String nextSolution = current.solution.isEmpty
                 ? moveStr
                 : "${current.solution} $moveStr";
 
             queue.add(
               SearchNode(
-                logic.getHeuristic(nextPieces, nextIsDeleted),
+                getHeuristic(nextPieces, nextIsDeleted),
                 stateId,
                 nextPieces,
                 nextIsDeleted,

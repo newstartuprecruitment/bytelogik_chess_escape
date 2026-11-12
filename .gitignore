@@ -1,6 +1,7 @@
 # See https://www.dartlang.org/guides/libraries/private-files
 
 # Files and directories created by pub
+.vscode
 .idea
 linux/
 macos/
@@ -32,3 +33,4 @@ doc/api/
 
 .flutter-plugins
 .flutter-plugins-dependencies
+solutions.csv
