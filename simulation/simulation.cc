@@ -1,5 +1,6 @@
+#include "board.h"
 #include <algorithm>
-#include <cmath>
+#include <bit>
 #include <fstream>
 #include <iostream>
 #include <queue>
@@ -10,209 +11,130 @@
 
 using namespace std;
 
-enum PieceType {
-  PAWN = 0,
-  KNIGHT = 1,
-  BISHOP = 2,
-  ROOK = 3,
-  QUEEN = 4,
-  KING = 5
-};
-
-struct Position {
-  int rank;
-  int file;
-  bool operator==(const Position &other) const {
-    return rank == other.rank && file == other.file;
-  }
-};
+constexpr Bitboard edges = Rank1 | Rank8 | FileA | FileH;
+constexpr int MAX_STEPS = 25;
+constexpr int MAX_ITERATIONS = 1ULL << 24;
 
 struct BoardState {
-  Position pieces[6];
   uint64_t deleted_squares;
-  int step_value;
-  int heuristic;
-  string solution;
+  Square pieces[6];
+  uint8_t step_value;
+  uint8_t heuristic;
+  uint8_t from[MAX_STEPS];
+  uint8_t to[MAX_STEPS];
 
   bool operator>(const BoardState &other) const {
     return (step_value + heuristic) > (other.step_value + other.heuristic);
   }
 };
 
-string posToString(int rank, int file) {
-  if (rank == -1 || file == -1)
-    return "exited";
-  string s = "";
-  s += (char)('a' + file);
-  s += (char)('1' + rank);
-  return s;
-}
-
-bool isEdge(int rank, int file) {
-  return rank == 0 || rank == 7 || file == 0 || file == 7;
-}
-
-bool isDeleted(uint64_t deleted_squares, int rank, int file) {
-  if (isEdge(rank, file))
-    return false;
-  return (deleted_squares >> (rank * 8 + file)) & 1ULL;
-}
-
-void setDeleted(uint64_t &deleted_squares, int rank, int file, bool val) {
-  if (isEdge(rank, file))
-    return;
-  if (val) {
-    deleted_squares |= (1ULL << (rank * 8 + file));
-  } else {
-    deleted_squares &= ~(1ULL << (rank * 8 + file));
-  }
-}
-
-bool isOccupiedByPiece(const BoardState &state, int rank, int file) {
-  for (int i = 0; i < 6; ++i) {
-    if (state.pieces[i].rank == rank && state.pieces[i].file == file) {
-      return true;
-    }
-  }
-  return false;
-}
-
-bool isNotReachable(const BoardState &state, int rank, int file) {
-  return isOccupiedByPiece(state, rank, file) ||
-         isDeleted(state.deleted_squares, rank, file);
-}
-
-bool hasAdjacentPiece(const BoardState &state, int piece_idx) {
-  int r = state.pieces[piece_idx].rank;
-  int f = state.pieces[piece_idx].file;
-  for (int i = 0; i < 6; ++i) {
-    if (i == piece_idx)
-      continue;
-    int pr = state.pieces[i].rank;
-    int pf = state.pieces[i].file;
-    if (pr == -1)
-      continue;
-    if (abs(r - pr) <= 1 && abs(f - pf) <= 1) {
-      return true;
-    }
-  }
-  return false;
-}
-
-int getHeuristic(const BoardState &state) {
-  int h = 0;
-  for (int i = 0; i < 5; ++i) {
-    if (state.pieces[i].rank != -1) {
-      h++;
-    }
-  }
-  return h;
-}
+struct IdentityHash {
+  size_t operator()(uint64_t x) const { return x; }
+};
 
 uint64_t hashState(const BoardState &state) {
-  uint64_t h = state.deleted_squares;
+  uint64_t p = 0;
   for (int i = 0; i < 6; ++i) {
-    uint64_t p = (state.pieces[i].rank == -1)
-                     ? 64
-                     : (state.pieces[i].rank * 8 + state.pieces[i].file);
-    h ^= (p << (i * 7));
-    h = (h << 13) | (h >> 51);
+    p |= (static_cast<uint64_t>(state.pieces[i]) << (i * 7));
   }
+  uint64_t h = state.deleted_squares ^ (p * 0x9e3779b185e6ULL);
+  h ^= h >> 33;
+  h *= 0xff51afd7ed558ccdULL;
+  h ^= h >> 33;
+  h *= 0xc4ceb9fe1a85ec53ULL;
+  h ^= h >> 33;
   return h;
 }
 
-vector<Position> getValidMoves(const BoardState &state, int piece_idx) {
-  vector<Position> moves;
-  int r = state.pieces[piece_idx].rank;
-  int f = state.pieces[piece_idx].file;
-  if (r == -1)
-    return moves;
-  if (!hasAdjacentPiece(state, piece_idx))
-    return moves;
+Bitboard getValidTargets(const BoardState &state, int piece_idx, Bitboard occ) {
+  int sq = static_cast<int>(state.pieces[piece_idx]);
+  Bitboard unreachable = occ | state.deleted_squares;
+  Bitboard valid_targets = 0;
 
-  if (piece_idx == PAWN) {
-    int dr[] = {-1, 1};
-    for (int d : dr) {
-      int nr = r + d;
-      int nf = f;
-      if (nr >= 0 && nr < 8 && !isNotReachable(state, nr, nf)) {
-        moves.push_back({nr, nf});
-      }
+  if (piece_idx == idx(Piece::Pawn)) {
+    Bitboard p = squareIntToBitboard(sq);
+    valid_targets |= (p << 8) & ~unreachable;
+    valid_targets |= (p >> 8) & ~unreachable;
+
+    Bitboard diag = 0;
+    diag |= (p << 7) & ~FileH;
+    diag |= (p << 9) & ~FileA;
+    diag |= (p >> 7) & ~FileA;
+    diag |= (p >> 9) & ~FileH;
+
+    diag &= state.deleted_squares;
+    diag &= ~occ;
+    valid_targets |= diag;
+  } else if (piece_idx == idx(Piece::Knight)) {
+    valid_targets = knightToLocations[sq] & ~unreachable;
+  } else if (piece_idx == idx(Piece::Bishop)) {
+    valid_targets = getBishopQueenLocationsFast(unreachable, sq) & ~unreachable;
+  } else if (piece_idx == idx(Piece::Rook)) {
+    valid_targets = getRookQueenLocationsFast(unreachable, sq) & ~unreachable;
+  } else if (piece_idx == idx(Piece::Queen)) {
+    valid_targets = (getBishopQueenLocationsFast(unreachable, sq) |
+                     getRookQueenLocationsFast(unreachable, sq)) &
+                    ~unreachable;
+  } else if (piece_idx == idx(Piece::King)) {
+    valid_targets = kingToLocations[sq] & ~unreachable;
+  }
+  return valid_targets;
+}
+
+string posToString(int sq) {
+  return string(1, (char)('a' + (sq % 8))) + string(1, (char)('1' + (sq / 8)));
+}
+
+string buildSolution(const BoardState &state) {
+  string sol = "";
+  for (int i = 0; i < state.step_value; ++i) {
+    if (i > 0)
+      sol += " ";
+    sol += posToString(state.from[i]) + posToString(state.to[i]);
+  }
+  return sol;
+}
+
+uint8_t getHeuristic(const BoardState &state) {
+  uint8_t h = 0;
+  for (int i = 0; i < 5; ++i) {
+    if (state.pieces[i] == Square::NoSquare) {
+      continue;
     }
-    int diag_r[] = {-1, -1, 1, 1};
-    int diag_f[] = {-1, 1, -1, 1};
-    for (int i = 0; i < 4; ++i) {
-      int nr = r + diag_r[i];
-      int nf = f + diag_f[i];
-      if (nr >= 0 && nr < 8 && nf >= 0 && nf < 8) {
-        if (isDeleted(state.deleted_squares, nr, nf) &&
-            !isOccupiedByPiece(state, nr, nf)) {
-          moves.push_back({nr, nf});
-        }
+    int sq = static_cast<int>(state.pieces[i]);
+    int r = sq / 8;
+    int f = sq % 8;
+
+    if (i == idx(Piece::Pawn)) {
+      h += std::min({r, 7 - r, f, 7 - f});
+    } else if (i == idx(Piece::Knight)) {
+      if ((r == 3 || r == 4) && (f == 3 || f == 4)) {
+        h += 2;
+      } else {
+        h += 1;
       }
-    }
-  } else if (piece_idx == KNIGHT) {
-    int dr[] = {-2, -2, -1, -1, 1, 1, 2, 2};
-    int df[] = {-1, 1, -2, 2, -2, 2, -1, 1};
-    for (int i = 0; i < 8; ++i) {
-      int nr = r + dr[i];
-      int nf = f + df[i];
-      if (nr >= 0 && nr < 8 && nf >= 0 && nf < 8) {
-        if (!isNotReachable(state, nr, nf)) {
-          moves.push_back({nr, nf});
-        }
-      }
-    }
-  } else if (piece_idx == BISHOP || piece_idx == ROOK || piece_idx == QUEEN) {
-    int dirs[8][2] = {{-1, -1}, {-1, 1}, {1, -1}, {1, 1},
-                      {-1, 0},  {1, 0},  {0, -1}, {0, 1}};
-    int start_d = (piece_idx == ROOK) ? 4 : 0;
-    int end_d = (piece_idx == BISHOP) ? 4 : 8;
-    for (int i = start_d; i < end_d; ++i) {
-      int nr = r + dirs[i][0];
-      int nf = f + dirs[i][1];
-      while (nr >= 0 && nr < 8 && nf >= 0 && nf < 8) {
-        if (!isNotReachable(state, nr, nf)) {
-          moves.push_back({nr, nf});
-        } else {
-          break;
-        }
-        nr += dirs[i][0];
-        nf += dirs[i][1];
-      }
-    }
-  } else if (piece_idx == KING) {
-    int dr[] = {-1, -1, -1, 0, 0, 1, 1, 1};
-    int df[] = {-1, 0, 1, -1, 1, -1, 0, 1};
-    for (int i = 0; i < 8; ++i) {
-      int nr = r + dr[i];
-      int nf = f + df[i];
-      if (nr >= 0 && nr < 8 && nf >= 0 && nf < 8) {
-        if (!isNotReachable(state, nr, nf)) {
-          moves.push_back({nr, nf});
-        }
-      }
+    } else {
+      h += 1;
     }
   }
-  return moves;
+  return h;
 }
 
 bool solveAStar(const BoardState &initial_state, BoardState &goal_state) {
   priority_queue<BoardState, vector<BoardState>, greater<BoardState>> pq;
-  unordered_set<uint64_t> visited;
+  unordered_set<uint64_t, IdentityHash> visited;
+  visited.reserve(131072);
 
   BoardState start = initial_state;
   start.step_value = 0;
   start.heuristic = getHeuristic(start);
-  start.solution = "";
 
   pq.push(start);
   visited.insert(hashState(start));
 
   int iterations = 0;
-  int max_iterations = 100000;
 
-  while (!pq.empty() && iterations < max_iterations) {
+  while (!pq.empty() && iterations < MAX_ITERATIONS) {
     BoardState current = pq.top();
     pq.pop();
     iterations++;
@@ -222,46 +144,63 @@ bool solveAStar(const BoardState &initial_state, BoardState &goal_state) {
       return true;
     }
 
-    if (current.step_value >= 25) {
+    if (current.step_value >= MAX_STEPS) {
       continue;
     }
 
+    Bitboard occ = 0;
     for (int i = 0; i < 6; ++i) {
-      if (current.pieces[i].rank == -1)
+      if (current.pieces[i] != Square::NoSquare) {
+        occ |= squareIntToBitboard(static_cast<int>(current.pieces[i]));
+      }
+    }
+
+    for (int i = 0; i < 6; ++i) {
+      if (current.pieces[i] == Square::NoSquare) {
         continue;
-      vector<Position> moves = getValidMoves(current, i);
-      for (const auto &move : moves) {
+      }
+
+      int from_sq = static_cast<int>(current.pieces[i]);
+
+      if ((kingToLocations[from_sq] & (occ & ~squareIntToBitboard(from_sq))) ==
+          0)
+        continue;
+
+      Bitboard valid_targets = getValidTargets(current, i, occ);
+
+      while (valid_targets) {
+        int to_sq = std::countr_zero(valid_targets);
+        valid_targets &= valid_targets - 1;
+
         BoardState next_state = current;
-        int old_r = current.pieces[i].rank;
-        int old_f = current.pieces[i].file;
 
-        setDeleted(next_state.deleted_squares, old_r, old_f, true);
-
-        if (i == PAWN && old_f != move.file) {
-          setDeleted(next_state.deleted_squares, move.rank, move.file, false);
+        if ((squareIntToBitboard(from_sq) & edges) == 0) {
+          next_state.deleted_squares |= squareIntToBitboard(from_sq);
         }
 
-        if (isEdge(move.rank, move.file) && i != KING) {
-          next_state.pieces[i] = {-1, -1};
+        if (i == idx(Piece::Pawn) && (from_sq % 8) != (to_sq % 8)) {
+          if ((squareIntToBitboard(to_sq) & edges) == 0) {
+            next_state.deleted_squares &= ~squareIntToBitboard(to_sq);
+          }
+        }
+
+        bool exited = ((squareIntToBitboard(to_sq) & edges) != 0) &&
+                      (i != idx(Piece::King));
+        if (exited) {
+          next_state.pieces[i] = Square::NoSquare;
         } else {
-          next_state.pieces[i] = move;
+          next_state.pieces[i] = static_cast<Square>(to_sq);
         }
 
-        next_state.step_value = current.step_value + 1;
+        next_state.from[current.step_value] = from_sq;
+        next_state.to[current.step_value] = to_sq;
+        next_state.step_value++;
+
         next_state.heuristic = getHeuristic(next_state);
 
-        string move_str =
-            posToString(old_r, old_f) + posToString(move.rank, move.file);
-        if (next_state.solution.empty()) {
-          next_state.solution = move_str;
-        } else {
-          next_state.solution += " " + move_str;
-        }
-
-        if (next_state.step_value + next_state.heuristic <= 25) {
+        if (next_state.step_value + next_state.heuristic <= MAX_STEPS) {
           uint64_t h = hashState(next_state);
-          if (visited.find(h) == visited.end()) {
-            visited.insert(h);
+          if (visited.insert(h).second) {
             pq.push(next_state);
           }
         }
@@ -272,7 +211,7 @@ bool solveAStar(const BoardState &initial_state, BoardState &goal_state) {
 }
 
 int main() {
-  int num_simulations = 500;
+  int num_simulations = 10;
   int infeasible_count = 0;
   int feasible_count = 0;
   vector<int> steps_count(16, 0);
@@ -280,10 +219,11 @@ int main() {
 
   mt19937 rng(1);
 
-  vector<Position> inner_squares;
+  vector<int> inner_squares;
+  inner_squares.reserve(36);
   for (int r = 1; r <= 6; ++r) {
     for (int f = 1; f <= 6; ++f) {
-      inner_squares.push_back({r, f});
+      inner_squares.push_back(r * 8 + f);
     }
   }
 
@@ -300,16 +240,18 @@ int main() {
       initial_board_state.deleted_squares = 0;
       initial_board = "";
 
+      Bitboard occ = 0;
       for (int i = 0; i < 6; ++i) {
-        initial_board_state.pieces[i] = inner_squares[i];
-        initial_board +=
-            posToString(inner_squares[i].rank, inner_squares[i].file);
+        initial_board_state.pieces[i] = static_cast<Square>(inner_squares[i]);
+        initial_board += posToString(inner_squares[i]);
         if (i < 5)
           initial_board += "-";
+        occ |= squareIntToBitboard(inner_squares[i]);
       }
 
       for (int i = 0; i < 6; ++i) {
-        if (hasAdjacentPiece(initial_board_state, i)) {
+        if ((kingToLocations[inner_squares[i]] &
+             (occ & ~squareIntToBitboard(inner_squares[i]))) != 0) {
           has_any_adjacent = true;
           break;
         }
@@ -326,7 +268,7 @@ int main() {
         steps_15_plus_count++;
       }
       csv_file << number_of_steps << ";" << initial_board << ";"
-               << goal_state.solution << "\n";
+               << buildSolution(goal_state) << "\n";
     } else {
       infeasible_count++;
     }
